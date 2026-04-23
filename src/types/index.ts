@@ -7,7 +7,7 @@ import type {
   PayrollEntry,
   ExpenseCategory,
   PaymentSource,
-} from "@/generated/prisma";
+} from "@/generated/prisma/client";
 
 export type {
   Organization,
