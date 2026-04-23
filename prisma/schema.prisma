@@ -1,0 +1,185 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum ExpenseCategory {
+  UTILITIES
+  SUPPLIES
+  REPAIRS
+  CIGARETTES
+  INVENTORY
+  MISC
+}
+
+// Distinguishes whether an expense comes out of the physical cash drawer.
+// CASH_DRAWER entries reduce "Cash Left"; CHECK and EXTERNAL do not.
+enum PaymentSource {
+  CASH_DRAWER
+  CHECK
+  EXTERNAL
+}
+
+// ─── NextAuth required models ─────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  password      String?   // bcrypt hash — null for OAuth-only users
+
+  accounts      Account[]
+  sessions      Session[]
+  organizations Organization[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verificationtokens")
+}
+
+// ─── Multi-tenant core ────────────────────────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  ownerId   String   @map("owner_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  owner     User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  locations Location[]
+
+  @@map("organizations")
+}
+
+model Location {
+  id        String   @id @default(cuid())
+  name      String
+  address   String?
+  orgId     String   @map("org_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  organization   Organization     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  employees      Employee[]
+  dailyRevenues  DailyRevenue[]
+  expenseEntries ExpenseEntry[]
+  payrollEntries PayrollEntry[]
+
+  @@map("locations")
+}
+
+model Employee {
+  id         String   @id @default(cuid())
+  name       String
+  role       String?
+  locationId String   @map("location_id")
+  orgId      String   @map("org_id")
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  location       Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  payrollEntries PayrollEntry[]
+
+  @@map("employees")
+}
+
+// ─── Financial tracking ───────────────────────────────────────────────────────
+
+model DailyRevenue {
+  id            String   @id @default(cuid())
+  locationId    String   @map("location_id")
+  orgId         String   @map("org_id")
+  date          DateTime @db.Date
+  cashIncome    Decimal  @map("cash_income") @db.Decimal(10, 2)
+  creditIncome  Decimal  @map("credit_income") @db.Decimal(10, 2)
+  notes         String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  // One revenue entry per location per day
+  @@unique([locationId, date])
+  @@map("daily_revenues")
+}
+
+model ExpenseEntry {
+  id            String          @id @default(cuid())
+  locationId    String          @map("location_id")
+  orgId         String          @map("org_id")
+  date          DateTime        @db.Date
+  amount        Decimal         @db.Decimal(10, 2)
+  category      ExpenseCategory
+  // CASH_DRAWER reduces cash position; CHECK/EXTERNAL tracked for P&L only
+  paymentSource PaymentSource   @map("payment_source")
+  notes         String?
+  createdAt     DateTime        @default(now()) @map("created_at")
+
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@map("expense_entries")
+}
+
+model PayrollEntry {
+  id         String   @id @default(cuid())
+  employeeId String   @map("employee_id")
+  locationId String   @map("location_id")
+  orgId      String   @map("org_id")
+  weekStart  DateTime @map("week_start") @db.Date
+  amount     Decimal  @db.Decimal(10, 2)
+  notes      String?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@map("payroll_entries")
+}
