@@ -1,4 +1,4 @@
-import type { DailyRevenue, ExpenseEntry, PayrollEntry } from "@/generated/prisma";
+import type { DailyRevenue, ExpenseEntry, PayrollEntry } from "@/generated/prisma/client";
 import type { WeekSummary, CombinedWeekSummary } from "@/types";
 
 // Computes the full weekly summary for a single location.
